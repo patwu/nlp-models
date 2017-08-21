@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+message TranslateRequest {
+	bytes ori_text = 19;
+    uint32 key = 20;
+}
+
+message TranslateReply {
+	bytes tran_text = 19;
+    uint32 key = 20;
+}
+
+service Translator {
+	rpc translate (TranslateRequest) returns (TranslateReply) {}
+}
