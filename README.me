@@ -1,0 +1,32 @@
+# nlp-models
+
+
+## Requirement
+
+LearningMines requires the following dependencies:
+* python 2.7
+* tensorflow 1.0
+* grpc 1.3
+
+Install grpc and grpc.tools
+```bash
+sudo python -m pip install grpcio
+sudo python -m pip install grpcio-tools
+```
+
+## Char-Based Translate Model:
+
+```bash
+# Build Char-vocabulary:
+# Corpus_file is serveral lines of src dest sentence, separated by tab
+python translate_utils.py --corpus_file [corpus_file] --vocabulary_file [vocabulary_file] --column [column]
+
+# Training Model:
+python translate_trainner.py --filename [corpus_file] --src_vocabulary [src_vocabulary] --dest_vocabulary [dest_vocabulary] --type simple --model_path [model_path_to_save] --batch_size [batch_size]
+
+# Start Model Server
+python translate_server.py --type simple --model_path [model_path] --src_vocabulary [src_vocabulary] --dest_vocabulary [dest_vocabulary] --port [service_port]
+
+# Test Model
+python translate_tester.py  --test_file [test_file]
+```
