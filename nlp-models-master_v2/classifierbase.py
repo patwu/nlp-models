@@ -9,6 +9,12 @@ class ClassifierBase(NetworkBase):
         cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels, name='cross_entropy_per_example')
         cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
         return cross_entropy_mean
+    
+	### calculate the accuracy
+    def compute_accracy(self, logits, labels):
+        correct_prediction = tf.equal(tf.argmax(logits, 1), labels)
+        accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+        return accuracy
 
     def build_input(self, extract_func):
         with self.graph.as_default():
@@ -19,11 +25,12 @@ class ClassifierBase(NetworkBase):
                 global_step = self.global_step= tf.Variable(0, name='global_step', trainable=False)
                 sample,mask = extract_func(sentence)
                 if self.args.shuffle_input==True:
-                    sample_queue=tf.RandomShuffleQueue(capacity=4096, min_after_dequeue=1024, dtypes=[tf.int32,tf.int32,tf.int64,tf.int64], shapes=[[256],[],[],[]])
+                    sample_queue=tf.RandomShuffleQueue(capacity=4096, min_after_dequeue=1024, dtypes=[tf.int32,tf.int32,tf.int64,tf.int64], shapes=[[1014],[],[],[]])
                 else:
-                    sample_queue=tf.FIFOQueue(capacity=1024, dtypes=[tf.int32,tf.int32,tf.int64,tf.int64], shapes=[[256],[],[],[]])
+                    sample_queue=tf.FIFOQueue(capacity=1024, dtypes=[tf.int32,tf.int32,tf.int64,tf.int64], shapes=[[1014],[],[],[]])
                 self.sample_queue=sample_queue
                 self.feed_step=sample_queue.enqueue((sample,mask[0],label,key))
+
 
     def build_model(self):
         with self.graph.as_default():
@@ -40,10 +47,10 @@ class ClassifierBase(NetworkBase):
                 with tf.device('/cpu:0'):
                     if self.args.is_train:
                         if self.args.start_lr is None:
-                            opt = tf.train.GradientDescentOptimizer(learning_rate=0.01)
+                            opt = tf.train.AdamOptimizer(learning_rate=0.001)
                         else:
-                            lr = tf.train.exponential_decay(self.args.start_lr, self.global_step, 1500000, 0.5, staircase=True)
-                            opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
+                            lr = tf.train.exponential_decay(self.args.start_lr, self.global_step, 15000, 0.95, staircase=True)
+                            opt = tf.train.AdamOptimizer(learning_rate=lr)
 
                     batch_x=tf.split(value=x,num_or_size_splits=n_gpu,axis=0)
                     batch_m=tf.split(value=m,num_or_size_splits=n_gpu,axis=0)
@@ -52,6 +59,8 @@ class ClassifierBase(NetworkBase):
                 tower_grads=[]
                 tower_loss=[]
                 tower_prob=[]
+                tower_accuracy = []
+
                 for i in range(n_gpu):
                     with tf.device('/gpu:%d' % i):
                         with tf.name_scope('%s_%d' % ('tower', i)) as scope:
@@ -59,16 +68,20 @@ class ClassifierBase(NetworkBase):
                             tower_prob.append(prob)
                             if self.args.is_train:
                                 loss = self._loss(logit, batch_y[i])
+                                accuracy = self.compute_accracy(prob, batch_y[i])
+                                tower_accuracy.append(accuracy)
                                 grads = opt.compute_gradients(loss)
                                 tower_grads.append(grads)
                                 tower_loss.append(loss)
-                self.prob=tf.reshape(tower_prob,[batch_size,2])
+ 
+                self.prob=tf.reshape(tower_prob,[batch_size,3])
                 if self.args.is_train:
                     grads = self._average_gradients(tower_grads)
                     apply_gradient_op = opt.apply_gradients(grads, global_step=self.global_step)
                     self.train_step = apply_gradient_op
                     self.loss=tower_loss[0]
-
+                    self.accuracy = tower_accuracy[0]
+                
                     #summary
                     if not self.args.start_lr is None:
                         tf.summary.scalar('lr',lr)
@@ -76,6 +89,7 @@ class ClassifierBase(NetworkBase):
                     correct_prediction = tf.equal(tf.argmax(self.prob, axis=1),y)
                     tf.summary.scalar('%s-classifier-acc'%self.name,tf.reduce_mean(tf.cast(correct_prediction, tf.float32)))
                     self.summary_step=tf.summary.merge_all()
+                
 
             init = tf.global_variables_initializer()
             self.sess.run(init)
@@ -93,7 +107,7 @@ class ClassifierBase(NetworkBase):
 
     def offline_pred(self, sentences):
         if self.args.shuffle_input:
-            print 'error, offline prediction can not shuffle'
+            print ('error, offline prediction can not shuffle')
             return
 
         for s in sentences:
