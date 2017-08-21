@@ -15,10 +15,10 @@ class NetworkBase(object):
         self.graph = tf.Graph()
         self.sess=tf.Session(graph=self.graph, config=config)
 
-    def _loss(self, xs, ys):
+    def _forwoard(self,inputs,is_train):
         pass
 
-    def _forward(self, batch_x, is_train=False):
+    def _loss(self, xs, ys):
         pass
 
     def _average_gradients(self,tower_grads):
@@ -59,6 +59,4 @@ class NetworkBase(object):
         else:
             print "No model."
             return False
-           
-
 
